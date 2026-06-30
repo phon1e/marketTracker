@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Tracker — S&P 500 · Nasdaq · Dow</title>
+<style>
+  :root{
+    --bg:#F2F2F7; --bg2:#FFFFFF; --bg3:#F2F2F7; --border:rgba(0,0,0,0.09);
+    --text:#1C1C1E; --muted:#8E8E93; --faint:#AEAEB2;
+    --green:#34C759; --green-dim:rgba(52,199,89,.11);
+    --red:#FF3B30; --red-dim:rgba(255,59,48,.11);
+    --accent:#007AFF; --amber:#FF9500;
+    --r:16px;
+    --shadow:0 2px 16px rgba(0,0,0,0.07),0 1px 4px rgba(0,0,0,0.05);
+    --shadow-sm:0 1px 5px rgba(0,0,0,0.07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+    padding:28px 20px 60px;
+  }
+  .wrap{max-width:1080px; margin:0 auto}
+
+  /* Header */
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:28px}
+  .brand{display:flex; align-items:center; gap:14px}
+  .logo{width:42px;height:42px;border-radius:13px;
+    background:linear-gradient(145deg,#007AFF 0%,#5AC8FA 100%);
+    display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;
+    box-shadow:0 3px 10px rgba(0,122,255,0.35)}
+  .brand h1{font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .brand p{font-size:12px;color:var(--muted);margin-top:1px}
+  .head-right{display:flex;align-items:center;gap:12px}
+  .mkt-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
+    background:rgba(255,255,255,0.85);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border);padding:8px 14px;border-radius:99px;
+    box-shadow:var(--shadow-sm)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex-shrink:0}
+  .dot.live{background:var(--green);box-shadow:0 0 0 0 rgba(52,199,89,.5);animation:pulse 2s infinite}
+  .dot.pre,.dot.post{background:var(--amber)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,199,89,.5)}70%{box-shadow:0 0 0 7px rgba(52,199,89,0)}100%{box-shadow:0 0 0 0 rgba(52,199,89,0)}}
+  .refresh{background:rgba(255,255,255,0.9);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border);color:var(--muted);
+    width:38px;height:38px;border-radius:12px;cursor:pointer;font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+    transition:.15s;box-shadow:var(--shadow-sm)}
+  .refresh:hover{color:var(--accent);border-color:rgba(0,122,255,0.25)}
+  .refresh.spin svg{animation:rot .8s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+
+  /* Index cards */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:30px}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:22px;
+    position:relative;overflow:hidden;min-height:188px;
+    box-shadow:var(--shadow);transition:box-shadow .2s,transform .18s}
+  .card:hover{box-shadow:0 6px 28px rgba(0,0,0,0.1),0 2px 8px rgba(0,0,0,0.06);transform:translateY(-2px)}
+  .card .top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+  .card .name{font-size:13.5px;font-weight:600}
+  .card .sym{font-size:11px;color:var(--faint);margin-top:2px;letter-spacing:.03em}
+  .card .price{font-size:32px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.1}
+  .card .chg{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;
+    font-variant-numeric:tabular-nums;margin-top:8px;padding:4px 10px;border-radius:8px}
+  .chg.up{color:var(--green);background:var(--green-dim)}
+  .chg.down{color:var(--red);background:var(--red-dim)}
+  .chg.flat{color:var(--muted);background:var(--bg3)}
+  .spark{position:absolute;right:0;bottom:0;left:0;height:44px;opacity:.28;pointer-events:none}
+
+  /* pre/post row */
+  .session{display:flex;gap:8px;margin-top:16px;position:relative;z-index:2}
+  .sess{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+  .sess .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
+    display:flex;align-items:center;gap:5px;font-weight:600}
+  .sess .val{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px}
+  .sess.muted .val{color:var(--faint)}
+  .sess .v-up{color:var(--green)} .sess .v-down{color:var(--red)}
+
+  .skeleton .price,.skeleton .chg{color:transparent;background:linear-gradient(90deg,#E5E5EA,#D1D1D6,#E5E5EA);
+    background-size:200% 100%;border-radius:6px;animation:sh 1.3s infinite}
+  @keyframes sh{to{background-position:-200% 0}}
+
+  /* News */
+  .sec-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 14px}
+  .sec-head h2{font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .sec-head .meta{font-size:12px;color:var(--faint)}
+  .news{display:flex;flex-direction:column;gap:0;
+    background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+    padding:4px;box-shadow:var(--shadow)}
+  .nrow{display:flex;gap:14px;padding:14px 16px;border-radius:12px;text-decoration:none;color:inherit;
+    align-items:flex-start;transition:background .12s;border:1px solid transparent}
+  .nrow:hover{background:var(--bg3)}
+  .nnum{font-size:13px;font-weight:700;color:var(--accent);width:20px;flex-shrink:0;font-variant-numeric:tabular-nums;padding-top:1px}
+  .nbody{flex:1;min-width:0}
+  .ntitle{font-size:14px;font-weight:600;line-height:1.4}
+  .ndesc{font-size:12.5px;color:var(--muted);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .nmeta{font-size:11px;color:var(--faint);margin-top:6px;display:flex;gap:10px;align-items:center}
+  .nsrc{color:var(--accent);font-weight:600}
+  .nload{padding:30px;text-align:center;color:var(--faint);font-size:13px}
+
+  .err{background:var(--red-dim);border:1px solid rgba(255,59,48,0.2);color:var(--red);font-size:12.5px;
+    padding:10px 14px;border-radius:12px;margin-bottom:18px;display:none}
+
+  /* Fear & Greed */
+  .fng-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+    padding:22px 26px;margin-bottom:30px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;
+    box-shadow:var(--shadow)}
+  .fng-gauge{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:220px}
+  .fng-right{flex:1;min-width:170px}
+  .fng-score{font-size:54px;font-weight:700;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
+  .fng-rating{font-size:15px;font-weight:600;margin-top:5px}
+  .fng-hist{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .fng-hitem{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:9px 13px}
+  .fng-hitem .fhi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:600}
+  .fng-hitem .fhi-val{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .fng-hitem .fhi-name{font-size:11px;color:var(--muted);margin-top:1px}
+  @media(max-width:760px){.fng-gauge{width:100%}}
+
+  /* Watchlist */
+  .wl-add-bar{display:flex;gap:8px;margin-bottom:6px;align-items:center}
+  .wl-input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);
+    border-radius:12px;padding:10px 14px;font-size:13.5px;outline:none;font-family:inherit;
+    transition:.15s;box-shadow:var(--shadow-sm)}
+  .wl-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,122,255,0.1)}
+  .wl-input::placeholder{color:var(--faint)}
+  .wl-btn{background:var(--accent);color:#fff;border:none;border-radius:12px;
+    padding:10px 20px;font-size:13.5px;font-weight:600;cursor:pointer;
+    white-space:nowrap;transition:.15s;box-shadow:0 2px 8px rgba(0,122,255,0.3)}
+  .wl-btn:hover{background:#0071E3}
+  .wl-btn:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
+  .wl-count{font-size:12px;color:var(--faint);white-space:nowrap}
+  .wl-err{font-size:12px;color:var(--red);min-height:18px;margin-bottom:8px;padding-left:2px}
+  .wl-list{display:flex;flex-direction:column;gap:0;
+    background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+    padding:4px;box-shadow:var(--shadow)}
+  .wl-empty{padding:30px;text-align:center;color:var(--faint);font-size:13px}
+  .wl-row{display:flex;align-items:center;gap:10px;padding:11px 12px;
+    border-radius:12px;border:1px solid transparent;transition:background .12s}
+  .wl-row:hover{background:var(--bg3)}
+  .wl-sym{min-width:72px;flex-shrink:0}
+  .wl-sym .sym-ticker{font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .wl-sym .sym-name{font-size:10.5px;color:var(--faint);margin-top:2px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;max-width:80px}
+  .wl-prices{display:flex;gap:6px;flex:1;min-width:0}
+  .wl-pbox{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:9px;
+    padding:7px 10px;min-width:0;overflow:hidden}
+  .wl-pbox .pbox-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600}
+  .wl-pbox.cur .pbox-lbl{color:var(--accent)}
+  .wl-pbox .pbox-price{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap}
+  .wl-pbox .pbox-chg{font-size:10.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .wl-spark-wrap{width:56px;height:30px;flex-shrink:0;opacity:.55}
+  .wl-spark-wrap svg{width:100%;height:100%}
+  .wl-remove{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;
+    padding:4px 6px;border-radius:7px;line-height:1;transition:.12s;flex-shrink:0}
+  .wl-remove:hover{color:var(--red);background:var(--red-dim)}
+  .wl-row.skeleton .pbox-price{color:transparent;background:linear-gradient(90deg,#E5E5EA,#D1D1D6,#E5E5EA);
+    background-size:200% 100%;border-radius:4px;animation:sh 1.3s infinite}
+
+  footer{margin-top:30px;text-align:center;font-size:11.5px;color:var(--faint);line-height:1.7}
+  footer a{color:var(--muted)}
+
+  /* Dark mode overrides — Apple macOS dark */
+  [data-theme="dark"]{
+    --bg:#000000; --bg2:#1C1C1E; --bg3:#2C2C2E; --border:rgba(255,255,255,0.1);
+    --text:#FFFFFF; --muted:#8E8E93; --faint:#636366;
+    --green:#30D158; --green-dim:rgba(48,209,88,.13);
+    --red:#FF453A; --red-dim:rgba(255,69,58,.13);
+    --shadow:0 2px 20px rgba(0,0,0,0.5),0 1px 6px rgba(0,0,0,0.35);
+    --shadow-sm:0 1px 6px rgba(0,0,0,0.35);
+  }
+  [data-theme="dark"] .mkt-status{background:rgba(28,28,30,0.85)}
+  [data-theme="dark"] .refresh{background:rgba(28,28,30,0.9)}
+  [data-theme="dark"] .theme-toggle{background:rgba(28,28,30,0.9)}
+  [data-theme="dark"] .skeleton .price,
+  [data-theme="dark"] .skeleton .chg{background:linear-gradient(90deg,#2C2C2E,#3A3A3C,#2C2C2E)}
+  [data-theme="dark"] .wl-row.skeleton .pbox-price{background:linear-gradient(90deg,#2C2C2E,#3A3A3C,#2C2C2E)}
+
+  /* Theme toggle button */
+  .theme-toggle{background:rgba(255,255,255,0.9);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border);color:var(--muted);
+    width:38px;height:38px;border-radius:12px;cursor:pointer;font-size:16px;
+    display:flex;align-items:center;justify-content:center;
+    transition:.15s;box-shadow:var(--shadow-sm)}
+  .theme-toggle:hover{color:var(--text)}
+
+  @media (max-width:760px){
+    .grid{grid-template-columns:1fr}
+    body{padding:20px 14px 50px}
+    .wl-spark-wrap{display:none}
+    .wl-prices{gap:4px}
+    .wl-pbox{padding:5px 7px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">📈</div>
+      <div>
+        <h1>Market Tracker</h1>
+        <p>S&amp;P 500 · Nasdaq · Dow Jones — live + pre/post-market</p>
+      </div>
+    </div>
+    <div class="head-right">
+      <div class="mkt-status"><span class="dot" id="statusDot"></span><span id="statusText">Loading…</span></div>
+      <button class="theme-toggle" id="themeBtn" title="Toggle dark mode" aria-label="Toggle theme">🌙</button>
+      <button class="refresh" id="refreshBtn" title="Refresh now" aria-label="Refresh">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="err" id="errBox"></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="sec-head">
+    <h2>📋 My Watchlist</h2>
+    <span class="meta" id="wlMeta">up to 10 symbols</span>
+  </div>
+  <div style="margin-bottom:30px">
+    <div class="wl-add-bar">
+      <input class="wl-input" id="wlInput" type="text" placeholder="Add ticker… e.g. AAPL" maxlength="12" autocomplete="off" spellcheck="false">
+      <button class="wl-btn" id="wlAddBtn">Add</button>
+      <span class="wl-count" id="wlCount">0 / 10</span>
+    </div>
+    <div class="wl-err" id="wlErr"></div>
+    <div class="wl-list" id="wlList"><div class="wl-empty">No stocks yet — add up to 10 tickers above.</div></div>
+  </div>
+
+  <div class="sec-head">
+    <h2>😨 Fear &amp; Greed Index</h2>
+    <span class="meta" id="fngMeta">CNN Markets</span>
+  </div>
+  <div class="fng-wrap" id="fngBox"><div class="nload">Loading Fear &amp; Greed…</div></div>
+
+  <div class="sec-head">
+    <h2>📰 Top Market News</h2>
+    <span class="meta" id="newsMeta">CNBC Markets</span>
+  </div>
+  <div class="news" id="news"><div class="nload">Loading headlines…</div></div>
+
+  <footer>
+    Quotes via Yahoo Finance (15-min delayed) · News via CNBC RSS · for informational use only, not financial advice.<br>
+    Pre/post-market figures use ETF proxies (SPY · QQQ · DIA). Auto-refreshes every 60s.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- config ---------- */
+const INDICES = [
+  { key:"sp",  name:"S&P 500",   index:"^GSPC", etf:"SPY" },
+  { key:"ndx", name:"Nasdaq",    index:"^IXIC", etf:"QQQ" },
+  { key:"dow", name:"Dow Jones", index:"^DJI",  etf:"DIA" },
+];
+
+// Yahoo's endpoints send no CORS header, so we relay through public read proxies.
+// Each entry: builds the proxy URL + extracts the JSON payload from the response text.
+// Ordered by reliability from a file:// (null-origin) page; we fall through on failure.
+const PROXIES = [
+  { // Jina reader — most reliable, sends ACAO:*, returns raw body
+    url: u => "https://r.jina.ai/" + u,
+    pick: txt => txt,
+  },
+  { // allorigins raw passthrough
+    url: u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+    pick: txt => txt,
+  },
+  { // allorigins JSON wrapper — body lives in .contents
+    url: u => "https://api.allorigins.win/get?url=" + encodeURIComponent(u),
+    pick: txt => { try { return JSON.parse(txt).contents; } catch(e){ return txt; } },
+  },
+];
+
+// tolerant JSON parse: handles proxies that prepend/append stray text
+function looseJSON(txt){
+  try { return JSON.parse(txt); } catch(e){}
+  const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
+  if (a>=0 && b>a) return JSON.parse(txt.slice(a, b+1));
+  throw new Error("unparseable response");
+}
+
+const REFRESH_MS = 60000;
+const NEWS_RSS = "https://www.cnbc.com/id/20910258/device/rss/rss.html"; // CNBC Markets
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+
+function fmtNum(n, dec=2){
+  if (n == null || isNaN(n)) return "—";
+  return n.toLocaleString("en-US", { minimumFractionDigits:dec, maximumFractionDigits:dec });
+}
+function fmtPct(p){
+  if (p == null || isNaN(p)) return "—";
+  return (p>=0?"+":"") + p.toFixed(2) + "%";
+}
+function fmtChg(c){
+  if (c == null || isNaN(c)) return "—";
+  return (c>=0?"+":"") + fmtNum(c);
+}
+
+// fetch JSON through the proxy chain, retrying each proxy once before moving on
+async function fetchJSON(targetUrl){
+  let lastErr;
+  for (const proxy of PROXIES){
+    for (let attempt=0; attempt<2; attempt++){
+      try{
+        const ctl = new AbortController();
+        const t = setTimeout(()=>ctl.abort(), 11000);
+        const res = await fetch(proxy.url(targetUrl), { signal:ctl.signal, cache:"no-store" });
+        clearTimeout(t);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const raw = await res.text();
+        return looseJSON(proxy.pick(raw));
+      }catch(e){ lastErr = e; }
+      await new Promise(r=>setTimeout(r, 500));
+    }
+  }
+  throw lastErr || new Error("all proxies failed");
+}
+
+function yahooChartUrl(sym){
+  return "https://query1.finance.yahoo.com/v8/finance/chart/" +
+    encodeURIComponent(sym) + "?includePrePost=true&interval=2m&range=1d";
+}
+
+/* parse a Yahoo chart result into a tidy quote object */
+function parseChart(json){
+  const r = json && json.chart && json.chart.result && json.chart.result[0];
+  if (!r) throw new Error("no chart data");
+  const m = r.meta || {};
+  const ts = r.timestamp || [];
+  const closes = (r.indicators && r.indicators.quote && r.indicators.quote[0] && r.indicators.quote[0].close) || [];
+  const cp = m.currentTradingPeriod || {};
+  const regStart = cp.regular ? cp.regular.start : null;
+  const regEnd   = cp.regular ? cp.regular.end   : null;
+
+  const prevClose = (m.chartPreviousClose != null) ? m.chartPreviousClose : m.previousClose;
+  const regPrice  = m.regularMarketPrice;
+
+  // walk timestamps to find latest pre-market and post-market prints
+  let prePrice=null, postPrice=null, regLast=null;
+  for (let i=0;i<ts.length;i++){
+    const c = closes[i];
+    if (c == null) continue;
+    const t = ts[i];
+    if (regStart!=null && t < regStart)      prePrice  = c;
+    else if (regEnd!=null && t >= regEnd)    postPrice = c;
+    else                                     regLast   = c;
+  }
+  const price = (regPrice!=null) ? regPrice : regLast;
+
+  // intraday series for sparkline (regular session only, fall back to all)
+  const series = [];
+  for (let i=0;i<ts.length;i++){
+    const c = closes[i];
+    if (c==null) continue;
+    if (regStart!=null && regEnd!=null){
+      if (ts[i]>=regStart && ts[i]<regEnd) series.push(c);
+    } else series.push(c);
+  }
+
+  return {
+    symbol:m.symbol, name: m.shortName || m.longName || "",
+    price, prevClose, prePrice, postPrice,
+    hasPrePost: !!m.hasPrePostMarketData,
+    marketState: m.marketState,  // PRE, REGULAR, POST, CLOSED, PREPRE, POSTPOST
+    cp, series: series.length>1 ? series : closes.filter(c=>c!=null),
+  };
+}
+
+/* ---------- rendering ---------- */
+function sparkSVG(series, up){
+  if (!series || series.length<2) return "";
+  const w=300, h=54, n=series.length;
+  let min=Math.min(...series), max=Math.max(...series);
+  if (max===min){ max+=1; min-=1; }
+  const X = i => (i/(n-1))*w;
+  const Y = v => h - ((v-min)/(max-min))*(h-6) - 3;
+  let d = "M"+X(0).toFixed(1)+","+Y(series[0]).toFixed(1);
+  for (let i=1;i<n;i++) d += " L"+X(i).toFixed(1)+","+Y(series[i]).toFixed(1);
+  const col = up ? "var(--green)" : "var(--red)";
+  const fill = up ? "rgba(52,199,89,.10)" : "rgba(255,59,48,.10)";
+  const area = d + " L"+w+","+h+" L0,"+h+" Z";
+  return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'+
+         '<path d="'+area+'" fill="'+fill+'"/>'+
+         '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.6"/></svg>';
+}
+
+function skeletonCard(cfg){
+  return '<div class="card skeleton" id="card-'+cfg.key+'">'+
+    '<div class="top"><div><div class="name">'+cfg.name+'</div>'+
+    '<div class="sym">'+cfg.index+'</div></div></div>'+
+    '<div class="price">000,000.00</div><div class="chg">+0.00</div>'+
+    '<div class="session"><div class="sess muted"><div class="lbl">Pre-market</div><div class="val">—</div></div>'+
+    '<div class="sess muted"><div class="lbl">After-hours</div><div class="val">—</div></div></div></div>';
+}
+
+function sessHTML(label, basePrice, sessPrice){
+  if (sessPrice==null || basePrice==null)
+    return '<div class="sess muted"><div class="lbl">'+label+'</div><div class="val">—</div></div>';
+  const diff = sessPrice - basePrice;
+  const pct = (diff/basePrice)*100;
+  const cls = diff>0?"v-up":diff<0?"v-down":"";
+  return '<div class="sess"><div class="lbl">'+label+'</div>'+
+    '<div class="val '+cls+'">'+fmtNum(sessPrice)+' <span style="font-weight:500">('+fmtPct(pct)+')</span></div></div>';
+}
+
+function renderCard(cfg, q, etf){
+  const el = $("card-"+cfg.key);
+  if (!el) return;
+  const diff = (q.price!=null && q.prevClose!=null) ? q.price - q.prevClose : null;
+  const pct  = (diff!=null && q.prevClose) ? (diff/q.prevClose)*100 : null;
+  const dir  = diff>0?"up":diff<0?"down":"flat";
+  const up   = diff>=0;
+  const arrow = dir==="up"?"▲":dir==="down"?"▼":"–";
+
+  // pre/post come from the ETF proxy (indices have no pre/post prints)
+  let preH="", postH="";
+  if (etf){
+    preH  = sessHTML("Pre-market ("+cfg.etf+")", etf.prevClose, etf.prePrice);
+    postH = sessHTML("After-hours ("+cfg.etf+")", etf.prevClose, etf.postPrice);
+  } else {
+    preH  = '<div class="sess muted"><div class="lbl">Pre-market</div><div class="val">—</div></div>';
+    postH = '<div class="sess muted"><div class="lbl">After-hours</div><div class="val">—</div></div>';
+  }
+
+  // index often has no intraday series when closed — fall back to the ETF's
+  const sparkData = (q.series && q.series.length>1) ? q.series : (etf ? etf.series : []);
+
+  el.className = "card";
+  el.innerHTML =
+    '<div class="top"><div><div class="name">'+cfg.name+'</div><div class="sym">'+cfg.index+'</div></div></div>'+
+    '<div class="price">'+fmtNum(q.price)+'</div>'+
+    '<div class="chg '+dir+'">'+arrow+' '+fmtChg(diff)+' &nbsp; '+fmtPct(pct)+'</div>'+
+    '<div class="session">'+preH+postH+'</div>'+
+    sparkSVG(sparkData, up);
+}
+
+function cardError(cfg, msg){
+  const el = $("card-"+cfg.key);
+  if (!el) return;
+  el.className="card";
+  el.innerHTML =
+    '<div class="top"><div><div class="name">'+cfg.name+'</div><div class="sym">'+cfg.index+'</div></div></div>'+
+    '<div class="price" style="font-size:18px;color:var(--muted)">Unavailable</div>'+
+    '<div class="chg flat">'+(msg||"fetch failed")+'</div>';
+}
+
+/* ---------- market status ---------- */
+function updateStatus(states){
+  const dot = $("statusDot"), txt = $("statusText");
+  // prefer the ETF state (it reports PRE/POST); fall back to index
+  const s = states.find(x=>x) || "";
+  let label="Market closed", cls="";
+  if (s==="REGULAR"){ label="Market open"; cls="live"; }
+  else if (s==="PRE" || s==="PREPRE"){ label="Pre-market"; cls="pre"; }
+  else if (s==="POST" || s==="POSTPOST"){ label="After-hours"; cls="post"; }
+  else if (s==="CLOSED"){ label="Market closed"; cls=""; }
+  const now = new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  dot.className = "dot "+cls;
+  txt.textContent = label + " · " + now;
+}
+
+/* ---------- main load ---------- */
+let loading=false;
+async function loadQuotes(){
+  if (loading) return;
+  loading=true;
+  $("refreshBtn").classList.add("spin");
+  $("errBox").style.display="none";
+  const states=[];
+  let failures=0;
+
+  await Promise.all(INDICES.map(async cfg=>{
+    try{
+      const [idxJson, etfJson] = await Promise.allSettled([
+        fetchJSON(yahooChartUrl(cfg.index)),
+        fetchJSON(yahooChartUrl(cfg.etf)),
+      ]);
+      let q=null, etf=null;
+      if (idxJson.status==="fulfilled") q = parseChart(idxJson.value);
+      if (etfJson.status==="fulfilled") etf = parseChart(etfJson.value);
+      if (!q && etf) q = etf;              // fall back to ETF as headline
+      if (!q) throw new Error("no data");
+      states.push(etf?etf.marketState:q.marketState);
+      renderCard(cfg, q, etf);
+    }catch(e){
+      failures++;
+      cardError(cfg, "retry soon");
+    }
+  }));
+
+  updateStatus(states);
+  if (failures===INDICES.length){
+    const b=$("errBox"); b.style.display="block";
+    b.textContent="⚠ Could not reach the quote service (free CORS proxy may be rate-limited). Will retry automatically — or click refresh.";
+  }
+  $("refreshBtn").classList.remove("spin");
+  loading=false;
+}
+
+/* ---------- news ---------- */
+function stripHTML(s){ const d=document.createElement("div"); d.innerHTML=s||""; return d.textContent||""; }
+function timeAgo(dateStr){
+  const t = new Date((dateStr||"").replace(" ","T")+"Z").getTime();
+  if (isNaN(t)) return "";
+  const diff = (Date.now()-t)/1000;
+  if (diff<3600) return Math.max(1,Math.round(diff/60))+"m ago";
+  if (diff<86400) return Math.round(diff/3600)+"h ago";
+  return Math.round(diff/86400)+"d ago";
+}
+async function loadNews(){
+  const box = $("news");
+  try{
+    const url = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(NEWS_RSS);
+    const ctl = new AbortController(); const t=setTimeout(()=>ctl.abort(),12000);
+    const res = await fetch(url,{signal:ctl.signal,cache:"no-store"});
+    clearTimeout(t);
+    const data = await res.json();
+    if (data.status!=="ok" || !data.items || !data.items.length) throw new Error("no items");
+    const items = data.items.slice(0,5);
+    box.innerHTML = items.map((it,i)=>{
+      const desc = stripHTML(it.description).trim().slice(0,160);
+      const ago = timeAgo(it.pubDate);
+      return '<a class="nrow" href="'+it.link+'" target="_blank" rel="noopener">'+
+        '<div class="nnum">'+(i+1)+'</div>'+
+        '<div class="nbody"><div class="ntitle">'+stripHTML(it.title)+'</div>'+
+        (desc?'<div class="ndesc">'+desc+'…</div>':'')+
+        '<div class="nmeta"><span class="nsrc">CNBC</span>'+(ago?'<span>'+ago+'</span>':'')+'</div></div></a>';
+    }).join("");
+    $("newsMeta").textContent = "CNBC Markets · updated "+new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  }catch(e){
+    box.innerHTML = '<div class="nload">Couldn\'t load headlines right now. <a href="#" id="newsRetry" style="color:var(--accent)">Retry</a></div>';
+    const r=$("newsRetry"); if(r) r.onclick=(ev)=>{ev.preventDefault();box.innerHTML='<div class="nload">Loading headlines…</div>';loadNews();};
+  }
+}
+
+/* ---------- fear & greed ---------- */
+const FNG_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata";
+
+function fngColor(s){
+  if(s<=25) return "#EF4444";
+  if(s<=45) return "#F97316";
+  if(s<=55) return "#EAB308";
+  if(s<=75) return "#84CC16";
+  return "#22C55E";
+}
+function fngLabel(s){
+  if(s<=25) return "Extreme Fear";
+  if(s<=45) return "Fear";
+  if(s<=55) return "Neutral";
+  if(s<=75) return "Greed";
+  return "Extreme Greed";
+}
+
+function fngGaugeSVG(score){
+  const W=220, H=115, cx=110, cy=112, R=100, ri=68;
+  function pt(radius, sc){
+    const a = Math.PI * (1 - sc/100);
+    return [+(cx + radius*Math.cos(a)).toFixed(2), +(cy - radius*Math.sin(a)).toFixed(2)];
+  }
+  const g = 0.8;
+  const zones = [[0,25,"#EF4444"],[25,45,"#F97316"],[45,55,"#EAB308"],[55,75,"#84CC16"],[75,100,"#22C55E"]];
+  let segs = "";
+  for(const [s1,s2,col] of zones){
+    const [ox1,oy1]=pt(R,s1+g), [ox2,oy2]=pt(R,s2-g);
+    const [ix2,iy2]=pt(ri,s2-g), [ix1,iy1]=pt(ri,s1+g);
+    segs += `<path d="M${ox1},${oy1} A${R},${R} 0 0,1 ${ox2},${oy2} L${ix2},${iy2} A${ri},${ri} 0 0,0 ${ix1},${iy1} Z" fill="${col}" opacity="0.88"/>`;
+  }
+  const na = Math.PI*(1-score/100);
+  const [nx,ny] = [+(cx+88*Math.cos(na)).toFixed(2), +(cy-88*Math.sin(na)).toFixed(2)];
+  const isDark = document.documentElement.dataset.theme === "dark";
+  const needleCol = isDark ? "#FFFFFF" : "#1C1C1E";
+  const dotInner  = isDark ? "#000000" : "#FFFFFF";
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">`+
+    segs+
+    `<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${needleCol}" stroke-width="2.5" stroke-linecap="round"/>`+
+    `<circle cx="${cx}" cy="${cy}" r="6" fill="${needleCol}"/>`+
+    `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${dotInner}"/>`+
+    `</svg>`;
+}
+
+async function loadFNG(){
+  const box = $("fngBox");
+  try{
+    const data = await fetchJSON(FNG_URL);
+    const fg = data && data.fear_and_greed;
+    if(!fg || fg.score==null) throw new Error("no data");
+    const sc = Math.round(fg.score);
+    const col = fngColor(sc);
+    const rat = fngLabel(sc);
+    const hist = [
+      {lbl:"Prev Close",  val:fg.previous_close},
+      {lbl:"1 Week Ago",  val:fg.previous_1_week},
+      {lbl:"1 Month Ago", val:fg.previous_1_month},
+    ];
+    const histHTML = hist.filter(h=>h.val!=null).map(h=>{
+      const s = Math.round(h.val);
+      return `<div class="fng-hitem">`+
+        `<div class="fhi-lbl">${h.lbl}</div>`+
+        `<div class="fhi-val" style="color:${fngColor(s)}">${s}</div>`+
+        `<div class="fhi-name">${fngLabel(s)}</div></div>`;
+    }).join("");
+    box.innerHTML =
+      `<div class="fng-gauge">${fngGaugeSVG(sc)}</div>`+
+      `<div class="fng-right">`+
+        `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);margin-bottom:6px;font-weight:600">CNN Fear &amp; Greed Index</div>`+
+        `<div class="fng-score" style="color:${col}">${sc}</div>`+
+        `<div class="fng-rating" style="color:${col}">${rat}</div>`+
+        `<div class="fng-hist">${histHTML}</div>`+
+      `</div>`;
+    $("fngMeta").textContent = "CNN Markets · " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  }catch(e){
+    box.innerHTML = `<div style="padding:20px;color:var(--faint);font-size:13px">Fear &amp; Greed Index unavailable — <a href="#" onclick="loadFNG();return false" style="color:var(--accent)">retry</a></div>`;
+  }
+}
+
+/* ---------- watchlist ---------- */
+const WL_KEY = "stock_watchlist_v1";
+const WL_MAX = 10;
+
+function wlLoad(){ try{ return JSON.parse(localStorage.getItem(WL_KEY)||"[]"); }catch(e){ return []; } }
+function wlSave(arr){ localStorage.setItem(WL_KEY, JSON.stringify(arr)); }
+
+function wlMiniSpark(series, up){
+  if(!series||series.length<2) return "";
+  const w=56,h=30,n=series.length;
+  let mn=Math.min(...series),mx=Math.max(...series);
+  if(mx===mn){mx+=1;mn-=1;}
+  const X=i=>(i/(n-1))*w, Y=v=>h-((v-mn)/(mx-mn))*(h-4)-2;
+  let d="M"+X(0).toFixed(1)+","+Y(series[0]).toFixed(1);
+  for(let i=1;i<n;i++) d+=" L"+X(i).toFixed(1)+","+Y(series[i]).toFixed(1);
+  const col=up?"var(--green)":"var(--red)";
+  return `<div class="wl-spark-wrap"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="${col}" stroke-width="1.5"/></svg></div>`;
+}
+
+function wlPriceBox(label, price, prevClose, isCur){
+  const cls="wl-pbox"+(isCur?" cur":"");
+  if(price==null||prevClose==null)
+    return `<div class="${cls}"><div class="pbox-lbl">${label}</div><div class="pbox-price" style="color:var(--faint)">—</div><div class="pbox-chg"> </div></div>`;
+  const diff=price-prevClose, pct=(diff/prevClose)*100;
+  const col=diff>0?"var(--green)":diff<0?"var(--red)":"var(--muted)";
+  return `<div class="${cls}">
+    <div class="pbox-lbl">${label}</div>
+    <div class="pbox-price">${fmtNum(price)}</div>
+    <div class="pbox-chg" style="color:${col}">${fmtChg(diff)} (${fmtPct(pct)})</div>
+  </div>`;
+}
+
+function wlRowHTML(sym, q){
+  const up = (q.price!=null&&q.prevClose!=null) ? q.price>=q.prevClose : true;
+  return `<div class="wl-row" id="wlrow-${sym}">
+    <div class="wl-sym">
+      <div class="sym-ticker">${sym}</div>
+      <div class="sym-name" title="${q.name||""}">${q.name||""}</div>
+    </div>
+    <div class="wl-prices">
+      ${wlPriceBox("Pre",q.prePrice,q.prevClose,false)}
+      ${wlPriceBox("Regular",q.price,q.prevClose,true)}
+      ${wlPriceBox("Post",q.postPrice,q.prevClose,false)}
+    </div>
+    ${wlMiniSpark(q.series,up)}
+    <button class="wl-remove" onclick="wlRemove('${sym}')" title="Remove ${sym}">✕</button>
+  </div>`;
+}
+
+function wlSkeletonRow(sym){
+  return `<div class="wl-row skeleton" id="wlrow-${sym}">
+    <div class="wl-sym"><div class="sym-ticker">${sym}</div><div class="sym-name">…</div></div>
+    <div class="wl-prices">
+      <div class="wl-pbox"><div class="pbox-lbl">Pre</div><div class="pbox-price">000.00</div><div class="pbox-chg"> </div></div>
+      <div class="wl-pbox cur"><div class="pbox-lbl">Regular</div><div class="pbox-price">000.00</div><div class="pbox-chg"> </div></div>
+      <div class="wl-pbox"><div class="pbox-lbl">Post</div><div class="pbox-price">000.00</div><div class="pbox-chg"> </div></div>
+    </div>
+    <button class="wl-remove" onclick="wlRemove('${sym}')" title="Remove">✕</button>
+  </div>`;
+}
+
+function wlErrorRow(sym){
+  return `<div class="wl-row" id="wlrow-${sym}">
+    <div class="wl-sym"><div class="sym-ticker">${sym}</div></div>
+    <div style="flex:1;font-size:12.5px;color:var(--faint)">Unavailable — check the ticker symbol.</div>
+    <button class="wl-remove" onclick="wlRemove('${sym}')" title="Remove ${sym}">✕</button>
+  </div>`;
+}
+
+function wlUpdateUI(){
+  const tickers=wlLoad();
+  $("wlCount").textContent=tickers.length+" / "+WL_MAX;
+  $("wlAddBtn").disabled=tickers.length>=WL_MAX;
+  const list=$("wlList");
+  if(tickers.length===0 && !list.querySelector(".wl-row"))
+    list.innerHTML='<div class="wl-empty">No stocks yet — add up to 10 tickers above.</div>';
+}
+
+async function wlFetch(sym){
+  const json = await fetchJSON(yahooChartUrl(sym));
+  return parseChart(json);
+}
+
+async function wlFetchAndRender(sym){
+  try{
+    const q = await wlFetch(sym);
+    const el=$("wlrow-"+sym); if(el) el.outerHTML=wlRowHTML(sym,q);
+  }catch(e){
+    const el=$("wlrow-"+sym); if(el) el.outerHTML=wlErrorRow(sym);
+  }
+}
+
+async function wlRefreshAll(){
+  const tickers=wlLoad();
+  await Promise.all(tickers.map(wlFetchAndRender));
+}
+
+function wlRemove(sym){
+  wlSave(wlLoad().filter(s=>s!==sym));
+  const el=$("wlrow-"+sym); if(el) el.remove();
+  wlUpdateUI();
+}
+
+async function wlAdd(){
+  const input=$("wlInput"), errEl=$("wlErr");
+  const sym=input.value.trim().toUpperCase().replace(/[^A-Z0-9.\-^]/g,"");
+  errEl.textContent="";
+  if(!sym){ errEl.textContent="Enter a ticker symbol."; return; }
+  const tickers=wlLoad();
+  if(tickers.includes(sym)){ errEl.textContent=sym+" is already in your watchlist."; return; }
+  if(tickers.length>=WL_MAX){ errEl.textContent="Watchlist full (max 10)."; return; }
+  tickers.push(sym); wlSave(tickers); input.value="";
+  const list=$("wlList");
+  const empty=list.querySelector(".wl-empty"); if(empty) empty.remove();
+  list.insertAdjacentHTML("beforeend", wlSkeletonRow(sym));
+  wlUpdateUI();
+  await wlFetchAndRender(sym);
+}
+
+function wlBoot(){
+  const tickers=wlLoad();
+  const list=$("wlList");
+  if(tickers.length>0){
+    list.innerHTML=tickers.map(wlSkeletonRow).join("");
+    wlRefreshAll();
+  }
+  wlUpdateUI();
+  $("wlInput").addEventListener("keydown", e=>{ if(e.key==="Enter") wlAdd(); });
+  $("wlAddBtn").addEventListener("click", wlAdd);
+}
+
+/* ---------- theme ---------- */
+function initTheme(){
+  const saved = localStorage.getItem("mkt_theme");
+  const preferred = (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : (saved || "light");
+  applyTheme(preferred);
+  $("themeBtn").addEventListener("click", ()=>{
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    loadFNG(); // re-render gauge needle with correct color
+  });
+}
+function applyTheme(t){
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem("mkt_theme", t);
+  $("themeBtn").textContent = t === "dark" ? "☀️" : "🌙";
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  $("grid").innerHTML = INDICES.map(skeletonCard).join("");
+  initTheme();
+  loadQuotes();
+  loadNews();
+  loadFNG();
+  wlBoot();
+  $("refreshBtn").onclick = ()=>{ loadQuotes(); loadNews(); loadFNG(); wlRefreshAll(); };
+  setInterval(loadQuotes, REFRESH_MS);
+  setInterval(wlRefreshAll, REFRESH_MS);
+  setInterval(loadNews, REFRESH_MS*5);
+  setInterval(loadFNG,  REFRESH_MS*5);
+}
+boot();
+</script>
+</body>
+</html>
