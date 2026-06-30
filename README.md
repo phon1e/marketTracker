@@ -5,7 +5,7 @@ v0.1
 
 A single-page US market dashboard — live quotes, Fear & Greed gauge, custom watchlist, and top headlines. No build step, no API key, no external libraries. Open `index.html` directly or serve it from GitHub Pages.
 
-**Live demo:** ``
+**Live demo:** `https://phon1e.github.io/marketTracker/`
 
 ---
 
