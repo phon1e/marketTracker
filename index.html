@@ -103,7 +103,28 @@
   </script>
 
   <script>
-    
+async function safeFetch(url, options = {}) {
+  if (typeof fetch !== 'function') return null;
+
+  const timeoutMs = options.timeoutMs || 8000;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  try {
+    const response = await fetch(url, controller ? { ...options, signal: controller.signal } : options);
+    if (!response || !response.ok) {
+      throw new Error('HTTP ' + (response && response.status ? response.status : 'unknown'));
+    }
+    return response;
+  } catch (error) {
+    console.warn('[safeFetch] Failed to load', url, error);
+    return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+
 document.addEventListener('DOMContentLoaded', async function() {
   const loading = document.getElementById('__bundler_loading');
   function setStatus(msg) { if (loading) loading.textContent = msg; }
@@ -218,8 +239,12 @@ document.addEventListener('DOMContentLoaded', async function() {
       // silently dropped. Inlining makes it a plain inline babel script,
       // which transformScriptTags handles unconditionally.
       if ((s.type === 'text/babel' || s.type === 'text/jsx') && s.src) {
-        const r = await fetch(s.src);
-        s.textContent = await r.text();
+        const r = await safeFetch(s.src);
+        if (r) {
+          s.textContent = await r.text();
+        } else {
+          s.textContent = '';
+        }
         s.removeAttribute('src');
       }
       const p = s.src ? new Promise(function(r) { s.onload = s.onerror = r; }) : null;
