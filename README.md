@@ -1,5 +1,5 @@
 # marketTracker
-v1
+v0.1
 
 # Market Tracker
 
