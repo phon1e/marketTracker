@@ -151,6 +151,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const manifest = JSON.parse(manifestEl.textContent);
     let template = JSON.parse(templateEl.textContent);
+    template = template.replaceAll('encodeURIComponent(u)', 'encodeURIComponent(decodeURIComponent(u))');
+    template = template.replace(/<svg viewBox="0 0 220 120"[\s\S]*?<\/svg>/, `<div style="width:150px;height:150px;border-radius:50%;background:conic-gradient(from -90deg,var(--green) 0deg calc({{ fng.score }} * 3.6deg),var(--line) calc({{ fng.score }} * 3.6deg) 360deg);padding:12px;display:grid;place-items:center"><div style="width:100%;height:100%;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:25px;font-weight:600;color:{{ fng.color }}">{{ fng.score }}</div></div>`);
 
     const uuids = Object.keys(manifest);
     setStatus('Unpacking ' + uuids.length + ' assets...');
