@@ -103,6 +103,26 @@
   .sec-head h2{font-size:15px;font-weight:600;letter-spacing:-.005em}
   .sec-head .meta{font-size:11px;color:var(--ink-3);white-space:nowrap}
 
+  /* Sector heatmap */
+  .heatmap{display:flex;flex-direction:column;gap:3px;margin-bottom:28px}
+  .heat-row{display:flex;gap:3px}
+  .heat-tile{flex:1 1 0;min-width:92px;border-radius:7px;border:1px solid var(--line);
+    padding:10px 9px;display:flex;flex-direction:column;justify-content:space-between;
+    min-height:76px;transition:transform .12s var(--ease);overflow:hidden}
+  .heat-row.row-major .heat-tile{min-height:102px}
+  .heat-tile:hover{transform:scale(1.02)}
+  .heat-tile .ht-name{font-size:11px;font-weight:600;line-height:1.25;overflow-wrap:break-word}
+  .heat-tile .ht-sym{font-size:9px;opacity:.7;letter-spacing:.05em;margin-top:2px}
+  .heat-tile .ht-pct{font-size:13.5px;font-weight:700;margin-top:6px;white-space:nowrap}
+  .heat-tile.skeleton{background:var(--panel-2)!important;color:var(--ink-3)!important}
+  .heat-tile.skeleton .ht-pct{color:transparent;background:linear-gradient(90deg,var(--panel-2),var(--line-mid),var(--panel-2));
+    background-size:200% 100%;border-radius:4px;animation:sh 1.3s infinite;display:inline-block;min-width:36px}
+  @media(max-width:760px){
+    .heat-row{flex-wrap:wrap}
+    .heat-tile{flex:1 1 calc(50% - 3px)}
+    .heat-row.row-major .heat-tile{min-height:88px}
+  }
+
   /* News */
   .news{display:flex;flex-direction:column;gap:0;
     background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);
@@ -232,6 +252,15 @@
 
   <div class="sec-head">
     <div class="htag">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>
+      <h2>Sector Heatmap</h2>
+    </div>
+    <span class="meta" id="heatMeta">S&amp;P 500 sectors · sized by approx. weight</span>
+  </div>
+  <div class="heatmap" id="heatmap"></div>
+
+  <div class="sec-head">
+    <div class="htag">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
       <h2>Watchlist</h2>
     </div>
@@ -267,7 +296,7 @@
 
   <footer>
     Quotes via Yahoo Finance (15-min delayed) · News via CNBC RSS · for informational use only, not financial advice.<br>
-    Pre/post-market figures use ETF proxies (SPY · QQQ · DIA). Auto-refreshes every 60s.
+    Pre/post-market figures use ETF proxies (SPY · QQQ · DIA). Sector heatmap uses the 11 SPDR sector ETFs, tile size ≈ approximate S&amp;P 500 sector weight. Auto-refreshes every 60s.
   </footer>
 </div>
 
@@ -487,6 +516,70 @@ function updateStatus(states){
   const now = new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
   dot.className = "dot "+cls;
   txt.textContent = label + " · " + now;
+}
+
+/* ---------- sector heatmap ---------- */
+// approximate S&P 500 sector weights (GICS, rounded) — real numbers, not "big/small",
+// so tile area means something. row groups two tiers so the biggest sectors read first.
+const SECTORS = [
+  { sym:"XLK",  name:"Technology",             weight:32,  row:0 },
+  { sym:"XLF",  name:"Financials",             weight:13,  row:0 },
+  { sym:"XLV",  name:"Health Care",            weight:10,  row:0 },
+  { sym:"XLY",  name:"Consumer Discretionary", weight:10,  row:1 },
+  { sym:"XLC",  name:"Communication Svcs",     weight:9,   row:1 },
+  { sym:"XLI",  name:"Industrials",            weight:8,   row:1 },
+  { sym:"XLP",  name:"Consumer Staples",       weight:6,   row:1 },
+  { sym:"XLE",  name:"Energy",                 weight:3.5, row:1 },
+  { sym:"XLU",  name:"Utilities",              weight:2.5, row:1 },
+  { sym:"XLRE", name:"Real Estate",            weight:2,   row:1 },
+  { sym:"XLB",  name:"Materials",              weight:2,   row:1 },
+];
+
+// same colour grammar as the rest of the app: gain-green / loss-red, intensity by magnitude
+function heatColor(pct){
+  if (pct==null || isNaN(pct)) return { bg:"var(--panel-2)", fg:"var(--ink-3)" };
+  const m = Math.min(Math.abs(pct)/3, 1); // full intensity at a 3%+ move
+  const rgb = pct>=0 ? "30,122,76" : "174,59,46";
+  const alpha = (0.10 + m*0.75).toFixed(2);
+  return { bg:"rgba("+rgb+","+alpha+")", fg: m>0.5 ? "#FFFFFF" : "var(--ink)" };
+}
+
+function heatTileHTML(sec, pct, skeleton){
+  const c = heatColor(pct);
+  const val = (pct==null||isNaN(pct)) ? "—" : fmtPct(pct);
+  return '<div class="heat-tile'+(skeleton?" skeleton":"")+'" id="heat-'+sec.sym+'" '+
+    'style="background:'+c.bg+';color:'+c.fg+';flex-grow:'+sec.weight+'">'+
+    '<div><div class="ht-name">'+sec.name+'</div><div class="ht-sym">'+sec.sym+'</div></div>'+
+    '<div class="ht-pct">'+val+'</div></div>';
+}
+
+function skeletonHeatmap(){
+  const row0 = SECTORS.filter(s=>s.row===0).map(s=>heatTileHTML(s,null,true)).join("");
+  const row1 = SECTORS.filter(s=>s.row===1).map(s=>heatTileHTML(s,null,true)).join("");
+  return '<div class="heat-row row-major">'+row0+'</div><div class="heat-row">'+row1+'</div>';
+}
+
+async function loadSectors(){
+  let up=0, down=0, total=0;
+  await Promise.all(SECTORS.map(async sec=>{
+    try{
+      const json = await fetchJSON(yahooChartUrl(sec.sym));
+      const q = parseChart(json);
+      const pct = (q.price!=null && q.prevClose) ? ((q.price-q.prevClose)/q.prevClose)*100 : null;
+      const el = $("heat-"+sec.sym);
+      if (el){
+        el.classList.remove("skeleton");
+        const c = heatColor(pct);
+        el.style.background = c.bg; el.style.color = c.fg;
+        const pctEl = el.querySelector(".ht-pct");
+        if (pctEl) pctEl.textContent = (pct==null||isNaN(pct)) ? "—" : fmtPct(pct);
+      }
+      if (pct!=null){ total++; if (pct>0) up++; else if (pct<0) down++; }
+    }catch(e){ /* tile keeps its last known reading */ }
+  }));
+  if (total>0){
+    $("heatMeta").textContent = up+" of "+total+" sectors up · updated "+new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  }
 }
 
 /* ---------- main load ---------- */
@@ -800,13 +893,16 @@ function applyTheme(t){
 /* ---------- boot ---------- */
 function boot(){
   $("grid").innerHTML = INDICES.map(skeletonCard).join("");
+  $("heatmap").innerHTML = skeletonHeatmap();
   initTheme();
   loadQuotes();
+  loadSectors();
   loadNews();
   loadFNG();
   wlBoot();
-  $("refreshBtn").onclick = ()=>{ loadQuotes(); loadNews(); loadFNG(); wlRefreshAll(); };
+  $("refreshBtn").onclick = ()=>{ loadQuotes(); loadSectors(); loadNews(); loadFNG(); wlRefreshAll(); };
   setInterval(loadQuotes, REFRESH_MS);
+  setInterval(loadSectors, REFRESH_MS);
   setInterval(wlRefreshAll, REFRESH_MS);
   setInterval(loadNews, REFRESH_MS*5);
   setInterval(loadFNG,  REFRESH_MS*5);
