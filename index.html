@@ -123,6 +123,31 @@
     .heat-row.row-major .heat-tile{min-height:88px}
   }
 
+  /* Market Snapshot tabs */
+  .tabs{display:inline-flex;gap:3px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:var(--r-control);padding:3px;margin-bottom:10px}
+  .tab-btn{background:none;border:none;color:var(--ink-2);font-family:inherit;font-size:12px;font-weight:600;
+    padding:7px 13px;border-radius:6px;cursor:pointer;transition:background .15s var(--ease),color .15s var(--ease)}
+  .tab-btn:hover{color:var(--ink)}
+  .tab-btn.active{background:var(--panel);color:var(--ink);box-shadow:var(--lift-1)}
+  .snap-wrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);
+    padding:2px;margin-bottom:28px;box-shadow:var(--lift-2)}
+  .tab-panel[hidden]{display:none}
+  .snap-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:7px}
+  .snap-row+.snap-row{border-top:1px solid var(--line)}
+  .snap-row .sr-name{font-size:13px;font-weight:600}
+  .snap-row .sr-sym{font-size:10px;color:var(--ink-3);margin-top:1px;letter-spacing:.04em}
+  .snap-row .sr-right{text-align:right}
+  .snap-row .sr-price{font-size:13.5px;font-weight:600;white-space:nowrap}
+  .snap-row .chg{margin-top:4px}
+  .macro-block{padding:14px 16px}
+  .macro-block+.macro-block{border-top:1px solid var(--line)}
+  .macro-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:600;margin-bottom:6px}
+  .macro-val{font-size:19px;font-weight:600;letter-spacing:-.01em;font-family:var(--serif)}
+  .macro-sub{font-size:11.5px;color:var(--ink-2);margin-top:5px;line-height:1.5}
+  .macro-sub a{color:var(--signal)}
+  .macro-todo{color:var(--amber);font-weight:600}
+
   /* News */
   .news{display:flex;flex-direction:column;gap:0;
     background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);
@@ -261,6 +286,33 @@
 
   <div class="sec-head">
     <div class="htag">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>
+      <h2>Market Snapshot</h2>
+    </div>
+    <span class="meta" id="snapMeta">Commodities · Crypto · Inflation</span>
+  </div>
+  <div class="tabs" id="snapTabs">
+    <button class="tab-btn" data-tab="commod">Commodities &amp; Crypto</button>
+    <button class="tab-btn" data-tab="macro">CPI &amp; Fed</button>
+  </div>
+  <div class="snap-wrap">
+    <div class="tab-panel" id="panel-commod"></div>
+    <div class="tab-panel" id="panel-macro" hidden>
+      <div class="macro-block">
+        <div class="macro-lbl">CPI (Consumer Price Index, YoY)</div>
+        <div class="macro-val" id="cpiVal">Loading…</div>
+        <div class="macro-sub" id="cpiSub">Source: FRED (CPIAUCSL)</div>
+      </div>
+      <div class="macro-block">
+        <div class="macro-lbl">FOMC / Federal Reserve</div>
+        <div class="macro-val" id="fedVal">—</div>
+        <div class="macro-sub" id="fedSub"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-head">
+    <div class="htag">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
       <h2>Watchlist</h2>
     </div>
@@ -296,7 +348,8 @@
 
   <footer>
     Quotes via Yahoo Finance (15-min delayed) · News via CNBC RSS · for informational use only, not financial advice.<br>
-    Pre/post-market figures use ETF proxies (SPY · QQQ · DIA). Sector heatmap uses the 11 SPDR sector ETFs, tile size ≈ approximate S&amp;P 500 sector weight. Auto-refreshes every 60s.
+    Pre/post-market figures use ETF proxies (SPY · QQQ · DIA). Sector heatmap uses the 11 SPDR sector ETFs, tile size ≈ approximate S&amp;P 500 sector weight.<br>
+    Commodities via Yahoo Finance (BTC-USD, gold and WTI crude futures) · CPI via FRED (CPIAUCSL) · FOMC figures are entered by hand after each meeting, not fetched live. Auto-refreshes every 60s.
   </footer>
 </div>
 
@@ -355,8 +408,10 @@ function fmtChg(c){
   return (c>=0?"+":"") + fmtNum(c);
 }
 
-// fetch JSON through the proxy chain, retrying each proxy once before moving on
-async function fetchJSON(targetUrl){
+// fetch through the proxy chain, retrying each proxy once before moving on.
+// `parse` turns the picked response text into a result, and throwing from it
+// (e.g. on an unexpected shape) triggers the same fallthrough as a network error.
+async function fetchViaProxies(targetUrl, parse){
   let lastErr;
   for (const proxy of PROXIES){
     for (let attempt=0; attempt<2; attempt++){
@@ -367,13 +422,14 @@ async function fetchJSON(targetUrl){
         clearTimeout(t);
         if (!res.ok) throw new Error("HTTP " + res.status);
         const raw = await res.text();
-        return looseJSON(proxy.pick(raw));
+        return parse(proxy.pick(raw));
       }catch(e){ lastErr = e; }
       await new Promise(r=>setTimeout(r, 500));
     }
   }
   throw lastErr || new Error("all proxies failed");
 }
+function fetchJSON(targetUrl){ return fetchViaProxies(targetUrl, looseJSON); }
 
 function yahooChartUrl(sym){
   return "https://query1.finance.yahoo.com/v8/finance/chart/" +
@@ -580,6 +636,117 @@ async function loadSectors(){
   if (total>0){
     $("heatMeta").textContent = up+" of "+total+" sectors up · updated "+new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
   }
+}
+
+/* ---------- market snapshot: commodities & crypto ---------- */
+const COMMODITIES = [
+  { sym:"BTC-USD", name:"Bitcoin" },
+  { sym:"GC=F",    name:"Gold (futures)" },
+  { sym:"CL=F",    name:"WTI Crude Oil (futures)" },
+];
+const idFor = sym => sym.replace(/[^A-Za-z0-9]/g,"_");
+
+function snapRowHTML(c){
+  return '<div class="snap-row" id="snap-'+idFor(c.sym)+'">'+
+    '<div><div class="sr-name">'+c.name+'</div><div class="sr-sym">'+c.sym+'</div></div>'+
+    '<div class="sr-right"><div class="sr-price">···</div></div></div>';
+}
+
+function renderSnapRow(c, q){
+  const el = $("snap-"+idFor(c.sym));
+  if (!el) return;
+  const diff = (q.price!=null && q.prevClose!=null) ? q.price - q.prevClose : null;
+  const pct  = (diff!=null && q.prevClose) ? (diff/q.prevClose)*100 : null;
+  const dir  = diff>0?"up":diff<0?"down":"flat";
+  const arrow = dir==="up"?"▲":dir==="down"?"▼":"–";
+  el.innerHTML =
+    '<div><div class="sr-name">'+c.name+'</div><div class="sr-sym">'+c.sym+'</div></div>'+
+    '<div class="sr-right"><div class="sr-price">'+fmtNum(q.price)+'</div>'+
+    '<div class="chg '+dir+'">'+arrow+' '+fmtPct(pct)+'</div></div></div>';
+}
+
+function snapErrorRow(c){
+  const el = $("snap-"+idFor(c.sym));
+  if (!el) return;
+  el.innerHTML =
+    '<div><div class="sr-name">'+c.name+'</div><div class="sr-sym">'+c.sym+'</div></div>'+
+    '<div class="sr-right"><div class="sr-price" style="font-size:12px;color:var(--ink-3)">Unavailable</div></div>';
+}
+
+async function loadCommodities(){
+  await Promise.all(COMMODITIES.map(async c=>{
+    try{
+      const json = await fetchJSON(yahooChartUrl(c.sym));
+      renderSnapRow(c, parseChart(json));
+    }catch(e){ snapErrorRow(c); }
+  }));
+}
+
+/* ---------- market snapshot: CPI & Fed ---------- */
+const FRED_CPI_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL";
+
+// CPIAUCSL is published monthly; refetching every 60s would just hammer the
+// proxy chain for data that hasn't changed, so this is called far less often.
+function parseFredCSV(text){
+  const lines = text.trim().split("\n");
+  if (!lines[0] || lines[0].indexOf("DATE")===-1) throw new Error("unexpected CPI response shape");
+  const rows = lines.slice(1).map(l=>{
+    const [d,v] = l.split(",");
+    return { date:d, val:parseFloat(v) };
+  }).filter(r=>r.date && !isNaN(r.val));
+  if (rows.length<13) throw new Error("not enough CPI history");
+  return rows;
+}
+
+async function loadCPI(){
+  try{
+    const rows = await fetchViaProxies(FRED_CPI_URL, parseFredCSV);
+    const n = rows.length;
+    const latest=rows[n-1], momPrev=rows[n-2], yoyPrev=rows[n-13];
+    const mom = ((latest.val-momPrev.val)/momPrev.val)*100;
+    const yoy = ((latest.val-yoyPrev.val)/yoyPrev.val)*100;
+    const monthLabel = new Date(latest.date+"T00:00:00").toLocaleDateString("en-US",{month:"short",year:"numeric"});
+    $("cpiVal").textContent = fmtPct(yoy)+" YoY";
+    $("cpiSub").textContent = monthLabel+" · "+fmtPct(mom)+" MoM · source: FRED (CPIAUCSL)";
+  }catch(e){
+    $("cpiVal").textContent = "Unavailable";
+    $("cpiSub").innerHTML = 'Could not reach FRED. <a href="#" id="cpiRetry">Retry</a>';
+    const r=$("cpiRetry"); if(r) r.onclick=(ev)=>{ev.preventDefault();loadCPI();};
+  }
+}
+
+// Hand-maintained: there is no free, key-less, CORS-friendly API for "latest FOMC
+// decision in plain English", so this is edited manually after each of the Fed's
+// ~8 meetings/year rather than faked. Update the four fields below when the Fed acts.
+const FOMC_LATEST = {
+  action: null,        // e.g. "Held the federal funds rate at 4.00%–4.25%"
+  date: null,           // e.g. "Sep 17, 2026"
+  nextMeeting: null,    // e.g. "Oct 28–29, 2026"
+  updated: null,        // when you last edited this block, e.g. "Sep 18, 2026"
+};
+
+function renderFOMC(){
+  if (!FOMC_LATEST.action){
+    $("fedVal").innerHTML = '<span class="macro-todo">Not set yet</span>';
+    $("fedSub").textContent = "Edit FOMC_LATEST in the source to show the current rate decision here.";
+    return;
+  }
+  $("fedVal").textContent = FOMC_LATEST.action;
+  $("fedSub").textContent = "FOMC · "+FOMC_LATEST.date+" · Next meeting "+FOMC_LATEST.nextMeeting+" · updated by hand "+FOMC_LATEST.updated;
+}
+
+/* ---------- market snapshot: tabs ---------- */
+function showSnapTab(tab){
+  document.querySelectorAll("#snapTabs .tab-btn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+  $("panel-commod").hidden = tab!=="commod";
+  $("panel-macro").hidden = tab!=="macro";
+  localStorage.setItem("mkt_snap_tab", tab);
+}
+function initSnapTabs(){
+  showSnapTab(localStorage.getItem("mkt_snap_tab")||"commod");
+  document.querySelectorAll("#snapTabs .tab-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>showSnapTab(btn.dataset.tab));
+  });
 }
 
 /* ---------- main load ---------- */
@@ -894,15 +1061,22 @@ function applyTheme(t){
 function boot(){
   $("grid").innerHTML = INDICES.map(skeletonCard).join("");
   $("heatmap").innerHTML = skeletonHeatmap();
+  $("panel-commod").innerHTML = COMMODITIES.map(snapRowHTML).join("");
   initTheme();
+  initSnapTabs();
   loadQuotes();
   loadSectors();
+  loadCommodities();
+  loadCPI();
+  renderFOMC();
   loadNews();
   loadFNG();
   wlBoot();
-  $("refreshBtn").onclick = ()=>{ loadQuotes(); loadSectors(); loadNews(); loadFNG(); wlRefreshAll(); };
+  $("refreshBtn").onclick = ()=>{ loadQuotes(); loadSectors(); loadCommodities(); loadCPI(); loadNews(); loadFNG(); wlRefreshAll(); };
   setInterval(loadQuotes, REFRESH_MS);
   setInterval(loadSectors, REFRESH_MS);
+  setInterval(loadCommodities, REFRESH_MS);
+  setInterval(loadCPI, REFRESH_MS*60); // CPI updates monthly — check hourly, not every minute
   setInterval(wlRefreshAll, REFRESH_MS);
   setInterval(loadNews, REFRESH_MS*5);
   setInterval(loadFNG,  REFRESH_MS*5);
